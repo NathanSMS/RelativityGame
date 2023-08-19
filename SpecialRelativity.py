@@ -1,5 +1,5 @@
 import numpy as np
-from math import sqrt, atanh
+from math import sqrt, atanh, sinh, cosh
 
 """
 This script includes a variety of functions and classes written for the development of a simple game showcasing the 
@@ -15,50 +15,60 @@ in an MIT student project called A Slower Speed of Light
 C = 299_792_458  # meters/second speed of light in reality
 
 
-def lorentz_factor(v, c=C):
+def minkowski_magnitude(four_vector) -> float:
+    minkowski_metrix_tensor = np.diag([1, -1, -1, -1])
+    temp = np.matmul(minkowski_metrix_tensor, four_vector)
+    return np.matmul(four_vector.T, temp).item()
+
+
+def calc_four_velocity(vx=0, c=C):
+    # Minkowski Metric |U|^2 = 0 = (ct)^2 -vx^2 -vy^2 -vz^2
+    # (ct)^2 = vx^2 +vy^2 +vz^2
+    gamma, beta = lorentz_factor(vx=0, c=c)
+    dct_dctau = gamma
+    dx_dctau = gamma*vx
+    return dct_dctau, dx_dctau
+
+
+def calc_four_acceleration(a, u, c):
+    pass
+
+
+def lorentz_factor(vx, c=C):
     # Gamma = 1/sqrt(1-v^2/c^2)
-    beta_coeff = v/c  # Percentage of the speed of light
+    beta_coeff = vx/c  # Percentage of the speed of light
     radicand = 1 - beta_coeff**2
     gamma = radicand**(-1/2)
     return gamma, beta_coeff
 
-def lorentz_transform(frame_velocity, four_vec, c=C):
-    # Returns the lorentz transform matrix from the current frame (taken as stationary) into the desired (moving) frame
-    # The given velocity is the velocity of the desired frame as measured in the current frame
 
-    transform = np.eye(4)  # Start w/ 4D identity and successively multiply through 3 lorentz boosts, one per axis
-    for dim in range(1, 4):
-
-        v = frame_velocity[dim, 0]
-
-        gamma, beta = lorentz_factor(v, c)
-        inter_transformation = np.eye(4)
-        inter_transformation[0, 0] = gamma
-        inter_transformation[0, dim] = -gamma*beta
-        inter_transformation[dim, 0] = -gamma*beta
-        inter_transformation[dim, dim] = gamma
-
-        transform = np.matmul(transform, inter_transformation)
-    print(transform)
-
-    return np.matmul(transform, four_vec)
+def lorentz_transform(vx, ct, x, y, c=C):
+    if abs(vx) >= C:
+        raise ValueError(f'Speed: {vx} greater than the speed of light used: {c}')
+    gamma, beta = lorentz_factor(vx, c=C)
+    new_ct = gamma*(ct - beta*x)
+    new_x = gamma*(-beta*ct+x)
+    return new_ct, new_x, y
 
 
-def rindler_transform(frame_velocity, frame_acceleration, four_vec, c=C):
-    # Currently only
+def rindler_transform(vx, ax, ct, x, y, c=C):
+    d = c**2/ax  # Distance to rindler horizon
+    new_ct = x*sinh(ct/d)
+    new_x = x*cosh(ct/d)
+    return new_ct, new_x, y
 
-    ...
+
+def calc_rapidity(v, c) -> float:
+    return atanh(v/c)
 
 
-def inverse_rindler_transform(position, alpha, c=C):
+def inverse_rindler_transform(ax, ct, x, y, c=C):
     # Inverse Rindler Transformation
-    ct = c**2/alpha*atanh(position.ct/position.x)
-    x = sqrt(position.x**2 - position.ct**2)
-    y = position.y
-    z = position.z
-    return np.array([[ct, x, y, z]]).T
+    new_ct = c**2/ax*atanh(ct/x)
+    new_x = sqrt(x**2 - ct**2)
+    return new_ct, new_x, y
 
 
 if __name__ == '__main__':
     test_vel = np.array([[0, 0, 0, 298000000]]).T
-    print(lorentz_transform(frame_velocity=test_vel, four_vec=np.ones(shape=(4, 1), dtype=float)))
+    print(lorentz_transform(vx=test_vel, ct=1, x=1, y=1))

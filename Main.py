@@ -1,79 +1,57 @@
 import pygame
-import Camera
+from Camera import Camera
 from sys import exit
 import os
 import random
 import numpy as np
-
-import Character
-import PhysicsObject
+from PhysicsObject import PhysicsObject
 from os import listdir
 from os.path import isfile,join
 
-
-###
-# Initialize window, game, load in assets
-###
+do_Display = True
 
 if __name__ == '__main__':
     pygame.init()
+    tau = 0  # Level Time
+    RES = (1800, 1000)
+    cam = Camera(resolution=RES, t=tau, y=RES[1])  # Start camera location off at (0, screen height)
 
-    BACKGROUND_COLOR = (255, 255, 255)  # RGB TEMP
-    PLAYER_VEL = 5  # TEMP, to be replaced w/ OOP stuff
-    C = 30
+    # Create a font for game info
+    game_font = pygame.font.Font(None, 50)
+    score = 0
 
-    cam = Camera.Camera()
-    dynamic_objects = set([])
-    static_objects = set([])
+    # TEMP
+    player = PhysicsObject(x=200, y=800)
+    ground = PhysicsObject(x=0, y=100, width=1800, height=100, is_dynamic=False, img=None)
 
-    player = Character.Character()
-    dynamic_objects.add(player)
+    while True:
+        cam.clear_screen()
 
-    FORCE_STRENGTH = 10  # How quickly the player accelerates
+        # Keep track of level time
+        d_tau = cam.time_step()  # this gives a time-dilation adjusted time step according to the camera speed
+        tau += d_tau  # PhysicsObject should keep track of level time as well, but Ill leave this for now
+        PhysicsObject.apply_time_step(dtau=d_tau)  # Update kinematics for all physics objects
 
-    running = True
-    while running:
-        d_tau = cam.time_step()  # Get level time pass from camera's frame
+        # Display Stuff
+        if do_Display:
+            bg_text = pygame.Surface((300, 140))
+            bg_text.fill('Black')
+            cam.window.blit(bg_text, (0, 0))
+            level_time_surface = game_font.render(f'Level Time:   {tau:.2f}', False, 'White')
+            cam.window.blit(level_time_surface, (10, 10))
+            player_time_surface = game_font.render(f'Player Time: {player.t:.2f}', False, 'White')
+            cam.window.blit(player_time_surface, (10, 50))
+            score_surface = game_font.render(f'Score: {score}', False, 'White')
+            cam.window.blit(score_surface, (10, 90))
+            cam.draw_to_screen(PhysicsObject.get_all_objects())
+        else:  # AI Learning To Play, Display Not Necessary
+            ...
 
-        ###
         # Process Inputs
-        ###
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False  # Redundant here I believe
                 pygame.quit()
                 exit()
 
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_w]:
-                player.jump()
-            if keys[pygame.K_s]:
-                ...  # player.crouch()?
-            if keys[pygame.K_a]:
-                player.apply_force(-FORCE_STRENGTH)
-            if keys[pygame.K_d]:
-                player.apply_force(FORCE_STRENGTH)
-
-        #
-        # Do kinematics in World Frame
-        #
-        for obj in dynamic_objects:
-            obj.time_step(d_tau)
-
-        #
-        # Process any collisions
-        #
-
-        #
-        # Perform relativistic Shifts to Camera Coord system
-        #
-
-        #
-        # Display Objects & Stuffs
-        #
-
-        all_drawn_items = dynamic_objects.union(static_objects)
-        cam.draw_to_screen(all_drawn_items)
-
-pygame.quit()
-quit()
+        pygame.display.update()

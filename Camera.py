@@ -1,89 +1,87 @@
+import math
+
 import pygame
 import SpecialRelativity as SR
 import numpy as np
+from collections import namedtuple
+from math import sin
 
 pygame.init()
-
-
-column_vec = (4, 1)
-vec_type = float
+vec = namedtuple('vector','ct x y')
 
 class Camera:
 
-    def __init__(self, resolution: tuple = (1000, 800), fps: int = 60, name: str = 'Super Lorentz Bros', four_pos=np.zeros(shape=column_vec, dtype=vec_type), four_vel=np.zeros(shape=column_vec, dtype=vec_type), four_acc=np.zeros(shape=column_vec, dtype=vec_type)):
+    def __init__(self, resolution: tuple = (1000, 800), fps: int = 60, name: str = 'Super Lorentz Bros', t=0, x=0, y=None, vx=0, ax=0):
         # Resolution passed as tuple (width, height)
         self.fps = fps
         self.window = pygame.display.set_mode(resolution, flags=pygame.SCALED)
         pygame.display.set_caption(name)
+        self.background_img = 'Assets/planet_background.jpg'
         self.clock = pygame.time.Clock()
-        self.four_pos = four_pos
-        self.four_vel = four_vel
-        self.four_acc = four_acc
+        self.t = t
+        self.x = x
+        if y is None:
+            y = resolution[1]
+        self.y = y
+        self.vx = vx
+        self.ax = ax
 
     def time_step(self):
         # Game display is done wrt camera object, frame rate should be (relatively) constant in this frame
         # calling the time_step() method returns the interval of time passed since the last frame WRT the level frame
-
-        gamma, beta = SR.lorentz_factor(v=self.four_vel[1])
-        dt_cam = self.clock.tick(60)
-        self.four_pos += self.four_vel*dt_cam
-        self.four_vel += self.four_acc*dt_cam
-        # self.four_acc  # tbd
-
-        d_tau = gamma*dt_cam - gamma*beta*float(self.four_pos[1])  # Perform lorentz transformation for just x velocity for cam
-        d_tau = float(d_tau)
-        print(f'dtau is type: {type(d_tau)}')
-        return d_tau
+        gamma, beta = SR.lorentz_factor(self.vx)
+        dt_cam = self.clock.tick(60)/1000  # Convert ms to s
+        self.t += dt_cam
+        return dt_cam*gamma
 
 # ATM THIS JUST WORKS LIKE BLIT, NEED TO ADD CODE TO MAKE IT WORK HOW I WANT
     def draw_to_screen(self, items=None):
-        # Pass in items as (surface, position_in_level)
+        # Pass in items as list of objects with surface and position attributes
 
         if items is None:
             return
         else:
             for item in items:
-                # transform each item's level coordinates to the camera coordinates
+                transformed_surface, transformed_pos = self.transform_surface(item)
 
-                item_surface = item[0]
-                item_level_4pos = np.array([[0, item[1][0], item[1][1], 0]]).T
-
-
-                # calculate new position and size in camera frame
-                transformed_4pos = self.get_transformed(item_level_4pos)
-
-                new_x = int(transformed_4pos[1].item())
-                new_y = int(transformed_4pos[2].item())
-
-                transformed_position = (new_x, new_y)  # CHANGE THIS TO CALCULATIONS
-                print(f'transformed position: {transformed_position}')
-
-                width = item_surface.get_width()
-                height = item_surface.get_height()
-                temp_array = np.array([[0, width, height, 0]]).T
-                temp_transformed = self.get_transformed(temp_array)
-                new_width = int(temp_transformed[1].item())
-                new_height = int(temp_transformed[2].item())
-
-                # transform items personal surface to fit dimensions in camera coordinates
-                transformed_surface = pygame.transform.smoothscale(item_surface, (new_width, new_height))
-
-                # blit transformed surface
-                self.window.blit(transformed_surface, transformed_position)
+                self.window.blit(transformed_surface, transformed_pos)
 
         pygame.display.update()
 
-    def get_transformed(self, four_vec):
-        transform_matrix = np.eye(4)
+    def clear_screen(self):
+        bg_surface = pygame.image.load(self.background_img)
+        self.window.blit(bg_surface, (0, 0))
 
-        if np.linalg.norm(self.four_acc, ord=2) == 0.0:  # if A = zero vector
-            # Check if Four Acceleration is null vector
-            # Do lorentz transformation
-            new_vec = SR.lorentz_transform(self.four_vel, four_vec)
+    @staticmethod
+    def update():
+        pygame.display.update()
 
-            # Camera coordinates flip y and start from top of screen
-            new_vec[2] = self.window.get_height() - new_vec[2]
-            return new_vec
+    def transform_surface(self, phys_object, c=SR.C):
+
+        # Get necessary info and do 'regular' transformation prior to relativistic adjustments
+        x = phys_object.x - self.x  # Shift along x so level & cam coordinates share origin
+        y = self.y - phys_object.y  # Shift and flip along y
+        proper_width = phys_object.proper_width
+        proper_height = phys_object.proper_height
+        screen_height = self.window.get_height()
+        surface = phys_object.surface
+
+        # Check if accelerating or not for lorentz vs rindler transformation
+        if self.ax == 0.0:  # if A = zero vector do lorentz transform
+            gamma, beta = SR.lorentz_factor(self.vx)  # Get important SR factors
+            new_x = gamma * (x - beta * self.t * c)  # Adjust x coord
+            new_y = y  # Adjust y coord to camera frame
+            new_width = gamma * proper_width
+            new_size = (new_width, proper_height)
+
+            transformed_surface = pygame.transform.smoothscale(surface, new_size)
+            transformed_pos = (new_x, new_y)
+
+            print(f'Level Frame  X: {phys_object.x} Y: {phys_object.y}')
+            print(f'Camera Frame X: {new_x} Y: {new_y}')
+            print('---------------------')
+
+            return transformed_surface, transformed_pos
         else:
             # do rindler transformation
             #return SR.rindler_transform(yadayadayada)
@@ -91,6 +89,8 @@ class Camera:
 
 
 if __name__ == '__main__':
+    ABS_PATH = '/home/nathan/PycharmProjects/RelativityGame/Assets/Individual Sprites/'
+
     pygame.init()
     
     RESOLUTION = (800, 400)
@@ -99,19 +99,27 @@ if __name__ == '__main__':
     # test_surface = pygame.image.load('Assets/Individual Sprites/adventurer-idle-00.png')
     # test_surface.fill('Red')
 
-    cam = Camera(resolution=RESOLUTION, four_vel=np.array([[0, 0.1*SR.C, 0, 0]]).T)
+    cam = Camera(resolution=RESOLUTION, x=0, y=0, vx=0)
 
-    surf1 = pygame.image.load('Assets/Individual Sprites/adventurer-die-00.png').convert_alpha()
-    surf2 = pygame.image.load('Assets/Individual Sprites/adventurer-attack2-00.png').convert_alpha()
+    surf1 = pygame.image.load(ABS_PATH+'adventurer-idle-00.png').convert_alpha()
+    surf2 = pygame.image.load(ABS_PATH+'adventurer-attack2-00.png').convert_alpha()
 
-    item1 = (surf1, (0, 350))
-    item2 = (surf2, (200, 100))
+    Item = namedtuple('Item','surface x y proper_width proper_height')
 
-    cam.draw_to_screen([item1, item2])
+    item1 = Item(surf1, 100, 200, 50, 50)
+    item2 = Item(surf2, 200, 250, 50, 50)
+
+    tau = 0  # Level time
     while True:
+        dtau = cam.time_step()
+        tau += dtau
+        cam.vx = SR.C*0.9999*math.sin(tau)
+        print(f'Level Time: {tau:.2f}, Camera Time: {cam.ct:.2f}, Camera Velocity: {cam.vx/SR.C:.2f}c')
+        cam.clear_screen()
+        cam.draw_to_screen([item1, item2])
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False  # Redundant here I believe
                 pygame.quit()
                 exit()
-        cam.clock.tick(60)
+        cam.update()
